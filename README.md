@@ -56,3 +56,5 @@ transient	booking
 the	customer	
 * TotalOfSpecialRequests:	Integer,	Number	of	special	requests	made	by	the	
 customer	(e.g. twin	bed	or	high	floor)
+
+The	data	file	is	located	at: https://intro-datascience.s3.us-east-2.amazonaws.com/Resort01.csv
