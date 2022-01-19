@@ -1,0 +1,482 @@
+---
+title: "Group 1_Hotel Cacncellation"
+author: "Chaitanya Kunapareddi, Chaithra Kopparam Cheluvaiah, Ruchak Nilesh Vira, Shourya Goel, Vinit Shambhu Horakeri"
+date: "09/12/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# importing required libraries
+library(tidyverse)
+library(caret)
+library(dplyr)
+library(ggplot2)
+library(e1071)
+library(kernlab)
+library(arules)
+library(arulesViz)
+library(maps)
+library(ggmap)
+library(mapproj)
+library(rworldmap)
+library(rpart)
+```
+
+```{r}
+# Reading the csv data into a dataframe
+hotelData <- read_csv("https://intro-datascience.s3.us-east-2.amazonaws.com/Resort01.csv")
+```
+
+```{r}
+# exploring structure of the data
+str(hotelData)
+```
+
+```{r}
+# Descriptive statistics
+summary(hotelData)
+```
+
+```{r}
+# creating table for categorical variables
+
+table(hotelData$IsCanceled)
+table(hotelData$Meal)
+table(hotelData$Country)
+table(hotelData$MarketSegment)
+table(hotelData$IsRepeatedGuest)
+table(hotelData$ReservedRoomType)
+table(hotelData$AssignedRoomType)
+table(hotelData$DepositType)
+table(hotelData$CustomerType)
+```
+
+```{r}
+# Data Cleaning - calculating NA values in the data
+sum(is.na(hotelData$IsCanceled))
+sum(is.na(hotelData$LeadTime))
+sum(is.na(hotelData$StaysInWeekendNights))
+sum(is.na(hotelData$StaysInWeekNights))
+sum(is.na(hotelData$Adults))
+sum(is.na(hotelData$Children))
+sum(is.na(hotelData$Babies))
+sum(is.na(hotelData$Meal))
+sum(is.na(hotelData$Country))
+sum(is.na(hotelData$MarketSegment))
+sum(is.na(hotelData$IsRepeatedGuest))
+sum(is.na(hotelData$PreviousCancellations))
+sum(is.na(hotelData$PreviousBookingsNotCanceled))
+sum(is.na(hotelData$ReservedRoomType))
+sum(is.na(hotelData$AssignedRoomType))
+sum(is.na(hotelData$BookingChanges))
+sum(is.na(hotelData$DepositType))
+sum(is.na(hotelData$CustomerType))
+sum(is.na(hotelData$RequiredCarParkingSpaces))
+sum(is.na(hotelData$TotalOfSpecialRequests))
+```
+
+```{r}
+#Converting "NULL" string to NA
+hotelData$Country[hotelData$Country=="NULL"] <- NA
+
+#correcting country code for canada - CN to CAN
+hotelData$Country[hotelData$Country=="CN"] <- "CAN"
+table(hotelData$Country)
+```
+
+```{r}
+# verifying whether NA is replaced in place of NULL string in Country column
+table(is.na(hotelData$Country))
+```
+
+```{r}
+# plotting NA values for each column
+hotelData  %>%
+  summarise_all(list(~is.na(.)))%>%
+  pivot_longer(everything(),
+               names_to = "columns", values_to="missing") %>%
+  count(columns, missing) %>%
+  ggplot(aes(y=columns,x=n,fill=missing))+
+  geom_col()
+```
+
+Exploratory Data Analysis 
+
+```{r}
+# plotting "ISCanceled" on a bar graph
+ggplot(hotelData, aes(x=factor(IsCanceled)))+geom_bar(fill="skyblue3", color="black", width = 0.5)+scale_x_discrete("IsCanceled")+geom_text(aes(label=..count..),stat="count", vjust=1.5)
+```
+
+```{r}
+# plotting "Adults" on a bar graph
+ggplot(hotelData, aes(x=factor(Adults)))+geom_bar(fill="skyblue3", color="black", width = 1.0)+scale_x_discrete("Adults")+geom_text(aes(label=..count..),stat="count", vjust=1.5)
+```
+
+```{r}
+# plotting "Children" on a bar graph
+ggplot(hotelData, aes(x=factor(Children)))+geom_bar(fill="skyblue3", color="black", width = 1.0)+scale_x_discrete("Children")+geom_text(aes(label=..count..),stat="count", vjust=1.5)
+```
+
+```{r}
+# plotting "Babies" on a bar graph
+
+ggplot(hotelData, aes(x=factor(Babies)))+geom_bar(fill="skyblue3", color="black", width = 1.0)+scale_x_discrete("Babies")+geom_text(aes(label=..count..),stat="count", vjust=1.5)
+```
+
+```{r}
+# plotting "Meal Plan" on a bar graph
+
+ggplot(hotelData, aes(x=factor(Meal)))+geom_bar(fill="skyblue3", color="black", width = 1.0)+scale_x_discrete("Meal Plan")+geom_text(aes(label=..count..),stat="count", vjust=1.5)
+```
+
+```{r}
+# plotting "Required Car Parking Spaces" on a bar graph
+
+ggplot(hotelData, aes(x=factor(RequiredCarParkingSpaces)))+geom_bar(fill="skyblue3", color="black", width = 1.0)+scale_x_discrete("Required Car Parking Spaces")+geom_text(aes(label=..count..),stat="count", vjust=1.5)
+```
+
+```{r}
+# plotting "IsCanceled" Vs Market Segment" on a bar graph
+
+ggplot(hotelData, aes(x=factor(MarketSegment), fill=factor(IsCanceled)))+
+  geom_bar(position="dodge")+labs(x="Market Segment", y="Count")+
+  scale_fill_discrete(name="IsCanceled", labels=c("Not Canceled","Canceled"))
+```
+
+```{r}
+# box plot of "LeadTime" w.r.t "ISCanceled"
+boxplot(LeadTime~IsCanceled, data=hotelData)
+```
+
+```{r}
+# step 1: factorizing "IsCanceled"
+# step 2: plotting Stacked bar graph DepositType Vs LeadTime
+hotelData$IsCanceled<-as.factor(hotelData$IsCanceled)
+ggplot(data = hotelData, aes(x=DepositType, y="LeadTime", color=IsCanceled))+geom_bar(stat="identity")
+```
+
+```{r}
+# plotting Stacked bar graph 'IsRepeatedGuest' Vs 'IsCanceled'
+ggplot(hotelData, aes(x=factor(IsRepeatedGuest), fill=factor(IsCanceled)))+geom_bar(position="dodge")+labs(x="IsRepeatedGuest", y="Count")+scale_fill_discrete(name="IsCanceled",labels=c("Not Canceled","Canceled"))
+```
+
+```{r}
+# plotting Stacked bar graph 'Assigned Room Type' Vs 'IsCanceled'
+ggplot(hotelData, aes(x=factor(AssignedRoomType), fill=factor(IsCanceled)))+
+  geom_bar(position="dodge")+labs(x="Assigned Room Type", y="Count")+
+  scale_fill_discrete(name="IsCanceled",labels=c("Not Canceled","Canceled"))
+```
+
+```{r}
+# plotting Stacked bar graph 'Reserved Room Type' Vs 'IsCanceled'
+ggplot(hotelData, aes(x=factor(ReservedRoomType), fill=factor(IsCanceled)))+
+  geom_bar(position="dodge")+labs(x="Reserved Room Type", y="Count")+
+  scale_fill_discrete(name="IsCanceled",labels=c("Not Canceled","Canceled"))
+```
+
+```{r}
+# plotting Stacked bar graph 'DepositType' Vs 'IsCanceled'
+ggplot(hotelData, aes(x=factor(DepositType), fill=factor(IsCanceled))) + 
+    geom_bar(position="dodge") +labs(x="DepositType",y="Count")+
+    scale_fill_discrete(name="IsCanceled", labels=c("Not canceled", "Canceled"))
+```
+
+```{r}
+# creating separate data frames for cancelled bookings and not cancelled bookings
+sample1 <- hotelData %>% filter(hotelData$IsCanceled == 1)
+sample2 <- hotelData %>% filter(hotelData$IsCanceled == 0)
+
+# finding count of "Market Segment" for each "DepositType"
+other_table <- table(sample1$MarketSegment, sample1$DepositType)
+
+# finding count of "AssignedRoomType" for each "MarketSegment"
+other_table1 <- table(sample1$AssignedRoomType, sample1$MarketSegment)
+
+# plotting cancelled bookings for each deposit type and market segments
+barplot(other_table,
+        main = "MarketSegment for Deposit Type when there are cancelations",
+        xlab = "IsCancelled", ylab = "Frequency",
+        col = c("cyan", "red", "green", "blue", "yellow","orange"),
+        legend.text = rownames(other_table),
+        beside = TRUE) 
+```
+
+```{r}
+# plotting cancelled bookings for each market segments and assigned room types
+barplot(other_table1,
+        main = "MarketSegment for Assigned room type",
+        xlab = "MarketSegment", ylab = "Frequency",
+        col = c("cyan", "red", "green", "blue", "yellow","orange","brown","darkblue","pink","purple","cornsilk3"),
+        legend.text = rownames(other_table1),
+        beside = TRUE) # Grouped bars
+```
+
+```{r}
+#creating new data frame with top 10 countries who are cancelling the most
+hotelData_country <- hotelData
+hotelData_country$LeadTime=hotelData$LeadTime
+hotelData_country$IsCanceled=hotelData$IsCanceled
+hotelData_country$MarketSegment=hotelData$MarketSegment
+hotelData_country$RequiredCarParkingSpaces=hotelData$RequiredCarParkingSpaces
+hotelData_country$DepositType=hotelData$DepositType
+hotelData_country$CustomerType=hotelData$CustomerType
+hotelData_country$StaysInWeekendNights=hotelData$StaysInWeekendNights
+hotelData_country$StaysInWeekNight=hotelData$StaysInWeekNights
+hotelData_country$Adults=hotelData$Adults
+hotelData_country$Children=hotelData$Children
+hotelData_country$Babies=hotelData$Babies
+hotelData_country$Counry=hotelData$Country
+
+# unique home countries of customers
+hotelData_country %>% unique()
+
+
+#factorizing "RequiredCarParkingSpaces" categorical variable
+hotelData_country$RequiredCarParkingSpaces<-as.factor(hotelData_country$RequiredCarParkingSpaces)
+
+# creating new data frame for top countries
+hotelData_top10countries<- hotelData_country %>% filter(Country == 'PRT' | Country == 'GBR' | Country == 'ESP' | Country == 'IRL' | Country == 'FRA' | Country == 'DEU' | Country == 'CN' |
+                               Country == 'NLD' | Country == 'USA'  )
+```
+
+```{r}
+# factorizing IsCanceled categorical varaible
+hotelData_top10countries$IsCanceled = as.factor(hotelData_top10countries$IsCanceled)
+
+#plotting bar graphs of top 10 countries and their booking cancellation
+ggplot(data = hotelData_top10countries, aes(x = Country, fill = IsCanceled)) +
+    geom_bar(position = "dodge")
+```
+
+```{r}
+#plotting bar graphs of top 10 countries and their deposit types
+ggplot(data = hotelData_top10countries, aes(x = Country, fill = DepositType)) +
+    geom_bar(position = "dodge")
+```
+
+```{r}
+newhoteldata_top10countries<-hotelData_top10countries
+#observations in top 10 countries having no deposit
+newhoteldata_top10countries%>% filter(hotelData_top10countries$DepositType=='No Deposit')
+```
+
+
+```{r}
+#plotting bar graphs of top 10 countries and their Market Segments
+ggplot(data = hotelData_top10countries, aes(x = Country, fill = MarketSegment)) +
+    geom_bar(position = "dodge")
+```
+
+```{r}
+#plotting bar graphs of top 10 countries and their required car parking spaces
+ggplot(data = hotelData_top10countries, aes(x = Country, fill = RequiredCarParkingSpaces)) +
+    geom_bar(position = "dodge")
+```
+
+```{r}
+#plotting bar graphs of top 10 countries and the customer types
+ggplot(data = hotelData_top10countries, aes(x = Country, fill = CustomerType)) +
+    geom_bar(position = "dodge")
+```
+
+```{r}
+#plotting bar graphs of top 10 countries number of customers of each type
+# staying for number of Weekend nights
+ggplot(data = hotelData_top10countries, aes(x = StaysInWeekendNights, fill = CustomerType)) +
+    geom_bar(position = "dodge")
+```
+
+```{r}
+#plotting bar graphs of top 10 countries number of customers of each type
+# staying for number of week nights
+ggplot(data = hotelData_top10countries, aes(x = StaysInWeekNight, fill = CustomerType)) +
+    geom_bar(position = "dodge")
+```
+
+```{r}
+#plotting bar graphs of top 10 countries 
+# LeadTime Vs StaysInWeekendNights 
+ggplot(data = hotelData_top10countries, aes(x = LeadTime,y=StaysInWeekendNights,size = Children)) +
+    geom_point()
+```
+
+```{r}
+# total numbr of people for each booking
+hotelData_top10countries$PeopleCount <- hotelData_top10countries$Adults+
+                                        hotelData_top10countries$Children+
+                                        hotelData_top10countries$Babies
+
+# plotting total number of people who are staying in week nights for each country
+ggplot(data = hotelData_top10countries, aes(x = Country,y=StaysInWeekNight, size = PeopleCount)) +
+    geom_point()
+```
+
+```{r}
+# plotting total number of people who are staying in week nights for each country
+ggplot(data = hotelData_top10countries, aes(x = Country,y=StaysInWeekendNights, size = PeopleCount)) +
+    geom_point()
+```
+
+
+```{r}
+# Joining country codes to an internal map
+joinData <- joinCountryData2Map( hotelData,
+                                 joinCode = "ISO3",
+                                 nameJoinColumn = "Country")
+
+#world map of Lead time for countries
+theMap <- mapCountryData( joinData, nameColumnToPlot="LeadTime", addLegend=FALSE)
+do.call( addMapLegend, c(theMap, legendWidth=1, legendMar = 2))
+```
+
+```{r}
+#converting data frame to factors
+hotelData$IsCanceled <- as.factor(hotelData$IsCanceled)
+hotelData$Meal <- as.factor(hotelData$Meal)
+hotelData$Country <- as.factor(hotelData$Country)
+hotelData$MarketSegment <- as.factor(hotelData$MarketSegment)
+hotelData$IsRepeatedGuest <- as.factor(hotelData$IsRepeatedGuest)
+hotelData$ReservedRoomType <- as.factor(hotelData$ReservedRoomType)
+hotelData$AssignedRoomType <- as.factor(hotelData$AssignedRoomType)
+hotelData$DepositType <- as.factor(hotelData$DepositType)
+hotelData$CustomerType <- as.factor(hotelData$CustomerType)
+```
+
+Association rule mining
+```{r}
+#converting to transactions
+hotelDataTransactions <- as(hotelData, 'transactions')
+hotelDataTransactions
+```
+
+```{r}
+# creating item frequency bar plot for top 20 items
+itemFrequencyPlot(hotelDataTransactions, topN=20)
+```
+
+```{r}
+# creating association rules to find pattern for cancelled booking
+#support=0.1 and confidence 0.55
+rules1 <- apriori(hotelDataTransactions,
+                  parameter=list(supp=0.1, conf=0.55),
+                  control=list(verbose=F),
+                  appearance=list(default="lhs",rhs=("IsCanceled=1")))
+
+inspect(rules1)
+```
+
+```{r}
+#sorting rules in descending order by lift
+top10Lift <- sort(rules1, decreasing = TRUE, na.last = NA, by = "lift")
+```
+
+```{r}
+inspect(top10Lift)
+```
+
+```{r}
+# creating association rules to find pattern for cancelled booking
+#support=0.09 and confidence=0.5
+rules2 <- apriori(hotelDataTransactions,
+                  parameter=list(supp=0.09, conf=0.50),
+                  control=list(verbose=F),
+                  appearance=list(default="lhs",rhs=("IsCanceled=1")))
+rules2
+```
+
+```{r}
+top10Lift2 <- sort(rules2, decreasing = TRUE, na.last = NA, by = "lift")
+#inspect(top10Lift2)
+```
+
+Model 1
+```{r}
+set.seed(1)
+#creating a training data set of only the "IsCanceled" column with partition at 66%
+trainList <- createDataPartition(y=hotelData$IsCanceled, p=0.66, list=FALSE)
+#str(trainList)
+#creating a training data set 
+trainSet <- hotelData[trainList,]
+#creating a testing data set 
+testSet <- hotelData[-trainList,]
+```
+
+```{r}
+dim(trainSet) 
+```
+
+```{r}
+dim(testSet)
+```
+
+```{r}
+# creating decision tree
+cartTree1 <- rpart(IsCanceled ~ ., data = trainSet)
+```
+
+```{r}
+library(rpart.plot)
+# plotting the decision tree
+rpart.plot(cartTree1)
+```
+
+```{r}
+#predicting cancellation from test data set
+rpartPred1 <- predict(cartTree1, newdata=testSet, type="class")
+
+# calculating accuracy of the prediction
+confusionMatrix(rpartPred1, testSet$IsCanceled)
+```
+
+
+```{r}
+# calculating variable importance to find top features impacting cancellation
+varImp <- varImp(cartTree1)
+
+#sorting to find top 5 impacting features
+arrange(varImp, desc(Overall))
+```
+
+Model 2
+```{r}
+# prediction of cancellation using top features found in the previous step
+cartTree2 <- rpart(IsCanceled ~ LeadTime+RequiredCarParkingSpaces+Country+
+                     DepositType+MarketSegment, data = trainSet)
+```
+
+```{r}
+# plotting the decision tree of the new model
+rpart.plot(cartTree2)
+```
+
+```{r}
+#predicting cancellation from test data set
+rpartPred2 <- predict(cartTree2, newdata=testSet, type="class")
+
+# calculating accuracy of the prediction
+confusionMatrix(rpartPred2, testSet$IsCanceled)
+```
+
+Model 3
+```{r}
+# prediction of cancellation by including different set of top features 
+cartTree3 <- rpart(IsCanceled ~ LeadTime+RequiredCarParkingSpaces+Country+DepositType+
+                     +StaysInWeekendNights+StaysInWeekNights+
+                     BookingChanges+PreviousCancellations+AssignedRoomType+Meal,
+                   data = trainSet)
+```
+
+```{r}
+rpart.plot(cartTree3)
+```
+
+```{r}
+rpartPred3 <- predict(cartTree3, newdata=testSet, type="class")
+
+confusionMatrix(rpartPred3, testSet$IsCanceled)
+```
+
